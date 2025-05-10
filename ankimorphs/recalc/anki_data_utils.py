@@ -47,6 +47,10 @@ class AnkiDBRowData:
         assert isinstance(data_row[6], str)
         self.note_tags: str = data_row[6]
 
+        # XXX: Override the card interval to use the FSRS stability instead.
+        assert isinstance(data_row[7], float)
+        self.card_interval = round(data_row[7] * 100)
+
 
 class AnkiCardData:  # pylint:disable=too-many-instance-attributes
     __slots__ = (
@@ -205,9 +209,12 @@ def _get_anki_data(
             [f" AND notes.tags LIKE '% {_tag} %'" for _tag in included_tags]
         )
 
+    today = mw.col._backend.sched_timing_today()
+
     result: list[Sequence[Any]] = mw.col.db.all(
-        """
-        SELECT cards.id, cards.ivl, cards.type, cards.queue, notes.id, notes.flds, notes.tags
+        f"""
+        SELECT cards.id, cards.ivl, cards.type, cards.queue, notes.id, notes.flds, notes.tags,
+        extract_fsrs_retrievability(cards.data, case when cards.odue !=0 then cards.odue else cards.due end, cards.ivl, {today.days_elapsed}, {today.next_day_at})
         FROM cards
         INNER JOIN notes ON
             cards.nid = notes.id
